@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi Selfie GPS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #video, #canvas, .preview-img { width: 100%; border-radius: 12px; transform: scaleX(-1); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen p-4 flex items-center justify-center">
+
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl p-6">
+        <header class="text-center mb-6">
+            <h1 class="text-2xl font-extrabold text-slate-800">E-ABSENSI</h1>
+            <p class="text-sm text-slate-500">Selfie & Geotagging System</p>
+        </header>
+
+        <!-- Form Nama Karyawan -->
+        <div id="nameArea" class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Nama Karyawan:</label>
+            <input type="text" id="employeeName" placeholder="Masukkan nama lengkap..." 
+                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <!-- Menu Sesi -->
+        <div id="sessionMenu" class="grid grid-cols-2 gap-4 mb-6">
+            <button onclick="startAbsensi('DATANG')" class="bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition shadow-lg shadow-emerald-200 text-sm">ABSEN DATANG</button>
+            <button onclick="startAbsensi('PULANG')" class="bg-rose-500 text-white font-bold py-4 rounded-2xl hover:bg-rose-600 transition shadow-lg shadow-rose-200 text-sm">ABSEN PULANG</button>
+        </div>
+
+        <!-- Area Kamera & Proses -->
+        <div id="absensiArea" class="hidden space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h2 id="sessionTitle" class="font-bold text-blue-600"></h2>
+                <button onclick="location.reload()" class="text-xs text-gray-400 underline">Batal</button>
+            </div>
+            
+            <div class="relative bg-slate-100 rounded-2xl overflow-hidden min-h-[250px] flex items-center justify-center">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas" class="hidden"></canvas>
+                <div id="resultPhoto" class="hidden w-full"></div>
+            </div>
+
+            <div id="locationStatus" class="bg-blue-50 p-3 rounded-xl text-xs text-blue-700 text-center">
+                📡 Sedang mengunci titik GPS...
+            </div>
+
+            <div class="space-y-3">
+                <button id="btnCapture" onclick="takeSnapshot()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg">AMBIL FOTO</button>
+                <button id="btnSubmit" onclick="submitToSheets()" class="hidden w-full bg-indigo-700 text-white py-4 rounded-xl font-bold">KIRIM ABSENSI SEKARANG</button>
+                <button id="btnReset" onclick="resetCamera()" class="hidden w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-medium">ULANGI FOTO</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // GANTI DENGAN URL WEB APP GOOGLE SHEETS ANDA
+        // ==========================================
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKTezEl6cOSjiibEtNlD5TK3oGLLmA1C50D5Kke9uM43dS1AJWzyWd0BihUHWbOAjy/exec"; 
+        
+        let stream;
+        let selectedSession = "";
+        let userCoords = "";
+        let capturedImage = "";
+
+        async function startAbsensi(session) {
+            const name = document.getElementById('employeeName').value;
+            if (!name) return alert("Silakan masukkan nama terlebih dahulu!");
+
+            selectedSession = session;
+            document.getElementById('sessionTitle').innerText = "SESI " + session;
+            document.getElementById('nameArea').classList.add('hidden');
+            document.getElementById('sessionMenu').classList.add('hidden');
+            document.getElementById('absensiArea').classList.remove('hidden');
+
+            // Akses Kamera
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                document.getElementById('video').srcObject = stream;
+            } catch (err) {
+                alert("Kamera diblokir! Izinkan akses kamera untuk absen.");
+            }
+
+            // Akses GPS
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    userCoords = `${pos.coords.latitude},${pos.coords.longitude}`;
+                    document.getElementById('locationStatus').innerHTML = `📍 Lokasi Terdeteksi: <br> <span class="font-mono">${userCoords}</span>`;
+                }, () => {
+                    document.getElementById('locationStatus').innerText = "❌ GPS tidak aktif/diizinkan.";
+                });
+            }
+        }
+
+        function takeSnapshot() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.translate(canvas.width, 0);
+            context.scale(-1, 1);
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            capturedImage = canvas.toDataURL('image/jpeg', 0.7); // Kompres agar hemat memori
+            
+            video.classList.add('hidden');
+            const resArea = document.getElementById('resultPhoto');
+            resArea.classList.remove('hidden');
+            resArea.innerHTML = `<img src="${capturedImage}" class="preview-img">`;
+            
+            document.getElementById('btnCapture').classList.add('hidden');
+            document.getElementById('btnSubmit').classList.remove('hidden');
+            document.getElementById('btnReset').classList.remove('hidden');
+        }
+
+        function resetCamera() {
+            document.getElementById('video').classList.remove('hidden');
+            document.getElementById('resultPhoto').classList.add('hidden');
+            document.getElementById('btnCapture').classList.remove('hidden');
+            document.getElementById('btnSubmit').classList.add('hidden');
+            document.getElementById('btnReset').classList.add('hidden');
+            capturedImage = "";
+        }
+
+        async function submitToSheets() {
+            if (!userCoords) return alert("Lokasi belum terdeteksi. Harap tunggu.");
+            
+            const btn = document.getElementById('btnSubmit');
+            btn.disabled = true;
+            btn.innerText = "🔄 Memproses...";
+            btn.classList.replace('bg-indigo-700', 'bg-gray-400');
+
+            const now = new Date();
+            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+            const payload = {
+                nama: document.getElementById('employeeName').value,
+                sesi: selectedSession,
+                hari: days[now.getDay()],
+                tanggal: now.toLocaleDateString('id-ID'),
+                jam: now.toLocaleTimeString('id-ID'),
+                lokasi: userCoords,
+                foto: capturedImage
+            };
+
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    cache: 'no-cache',
+                    body: JSON.stringify(payload)
+                });
+
+                alert("✅ Absensi Berhasil Terkirim!");
+                location.reload();
+            } catch (e) {
+                alert("Gagal mengirim data. Cek koneksi.");
+                btn.disabled = false;
+                btn.innerText = "KIRIM ABSENSI SEKARANG";
+                btn.classList.replace('bg-gray-400', 'bg-indigo-700');
+            }
+        }
+    </script>
+</body>
+</html>
